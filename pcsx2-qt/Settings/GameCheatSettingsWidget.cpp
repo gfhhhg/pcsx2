@@ -262,31 +262,6 @@ void GameCheatSettingsWidget::reloadList()
 	m_enabled_patches =
 		dialog()->getSettingsInterface()->GetStringList(Patch::CHEATS_CONFIG_SECTION, Patch::PATCH_ENABLE_CONFIG_KEY);
 
-	// For backwards compatibility, auto-enable patches from // comments on first load
-	bool has_comment_patches = false;
-	bool has_non_comment_enabled = false;
-	for (const Patch::PatchInfo& pi : m_patches)
-	{
-		if (pi.from_comment)
-			has_comment_patches = true;
-		else if (std::find(m_enabled_patches.begin(), m_enabled_patches.end(), pi.name) != m_enabled_patches.end())
-			has_non_comment_enabled = true;
-	}
-
-	if (has_comment_patches && m_enabled_patches.empty() && !has_non_comment_enabled)
-	{
-		SettingsInterface* si = dialog()->getSettingsInterface();
-		for (const Patch::PatchInfo& pi : m_patches)
-		{
-			if (pi.from_comment)
-			{
-				si->AddToStringList(Patch::CHEATS_CONFIG_SECTION, Patch::PATCH_ENABLE_CONFIG_KEY, pi.name.c_str());
-				m_enabled_patches.push_back(pi.name);
-			}
-		}
-		si->Save();
-	}
-
 	m_parent_map.clear();
 	m_model->removeRows(0, m_model->rowCount());
 	m_ui.allCRCsCheckbox->setEnabled(!dialog()->getSerial().empty() && m_ui.cheatList->isEnabled());
