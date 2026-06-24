@@ -252,6 +252,31 @@ u32 Patch::LoadPatchesFromString(std::vector<PatchGroup>* patch_list, const std:
 	std::string line;
 	while (std::getline(ss, line))
 	{
+		std::string trimmed_line = line;
+		StringUtil::StripWhitespace(&trimmed_line);
+
+		// Check for // comment lines that might be patch names (e.g. "//Infinite Health")
+		if (trimmed_line.length() >= 2 && trimmed_line[0] == '/' && trimmed_line[1] == '/')
+		{
+			std::string comment_text = trimmed_line.substr(2);
+			StringUtil::StripWhitespace(&comment_text);
+
+			// Skip empty comments
+			if (comment_text.empty())
+				continue;
+
+			// If we already have a patch group with patches, save it before starting a new one
+			if (!current_patch_group.patches.empty() || !current_patch_group.dpatches.empty())
+			{
+				add_current_patch();
+				current_patch_group = {};
+			}
+
+			// Use the comment text as the patch group name
+			current_patch_group.name = comment_text;
+			continue;
+		}
+
 		TrimPatchLine(line);
 		if (line.empty())
 			continue;
@@ -413,6 +438,23 @@ bool Patch::PatchStringHasUnlabelledPatch(const std::string& pnach_data)
 
 	while (std::getline(ss, line))
 	{
+		std::string trimmed_line = line;
+		StringUtil::StripWhitespace(&trimmed_line);
+
+		// Check for // comment lines that might be patch names
+		if (trimmed_line.length() >= 2 && trimmed_line[0] == '/' && trimmed_line[1] == '/')
+		{
+			std::string comment_text = trimmed_line.substr(2);
+			StringUtil::StripWhitespace(&comment_text);
+			if (!comment_text.empty())
+			{
+				if (!foundPatch)
+					return false;
+				foundLabel = true;
+				continue;
+			}
+		}
+
 		TrimPatchLine(line);
 		if (line.empty())
 			continue;
@@ -446,9 +488,50 @@ void Patch::ExtractPatchInfo(std::vector<PatchInfo>* dst, const std::string& pna
 
 	std::optional<patch_place_type> last_place;
 	bool unknown_place = false;
+	bool current_patch_has_lines = false;
 
 	while (std::getline(ss, line))
 	{
+		std::string trimmed_line = line;
+		StringUtil::StripWhitespace(&trimmed_line);
+
+		// Check for // comment lines that might be patch names (e.g. "//Infinite Health")
+		if (trimmed_line.length() >= 2 && trimmed_line[0] == '/' && trimmed_line[1] == '/')
+		{
+			std::string comment_text = trimmed_line.substr(2);
+			StringUtil::StripWhitespace(&comment_text);
+
+			// Skip empty comments and gametitle-like lines
+			if (comment_text.empty())
+				continue;
+
+			// If we already have a named patch with patch lines, save it before starting a new one
+			if (!current_patch.name.empty() && current_patch_has_lines)
+			{
+				if (std::none_of(dst->begin(), dst->end(),
+						[&current_patch](const PatchInfo& pi) { return (pi.name == current_patch.name); }))
+				{
+					if (!ContainsPatchName(*dst, current_patch.name))
+					{
+						dst->push_back(std::move(current_patch));
+					}
+					else
+					{
+						Console.WriteLn(Color_Gray, fmt::format("Patch: Skipped reading patch '{}' since a patch with a duplicate name was already loaded.", current_patch.name));
+					}
+				}
+				current_patch = {};
+				current_patch_has_lines = false;
+			}
+
+			// Use the comment as the patch name
+			current_patch.name = comment_text;
+			current_patch.from_comment = true;
+			last_place = std::nullopt;
+			unknown_place = false;
+			continue;
+		}
+
 		TrimPatchLine(line);
 		if (line.empty())
 			continue;
@@ -473,6 +556,7 @@ void Patch::ExtractPatchInfo(std::vector<PatchInfo>* dst, const std::string& pna
 					}
 				}
 				current_patch = {};
+				current_patch_has_lines = false;
 			}
 
 			current_patch.name = line.substr(1, line.length() - 2);
@@ -502,6 +586,8 @@ void Patch::ExtractPatchInfo(std::vector<PatchInfo>* dst, const std::string& pna
 		{
 			if (!has_patch && num_unlabelled_patches)
 				(*num_unlabelled_patches)++;
+
+			current_patch_has_lines = true;
 
 			// Try to extract the place value of the patch lines so we can
 			// display it in the GUI if they all match. TODO: Don't duplicate

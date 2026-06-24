@@ -143,6 +143,9 @@ namespace Patch
 		// the same place value.
 		std::optional<patch_place_type> place;
 
+		// True if this patch was parsed from a // comment (for backwards compatibility, these default to enabled)
+		bool from_comment = false;
+
 		std::string_view GetNamePart() const;
 		std::string_view GetNameParentPart() const;
 	};
