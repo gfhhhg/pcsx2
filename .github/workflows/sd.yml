@@ -1,4 +1,4 @@
-name: 🖥️ Windows Builds
+name: 🖥️手动 Windows Builds
 
 on:
   workflow_dispatch:
