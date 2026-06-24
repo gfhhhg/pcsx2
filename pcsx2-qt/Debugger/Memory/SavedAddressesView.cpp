@@ -51,6 +51,66 @@ SavedAddressesView::SavedAddressesView(const DebuggerViewParameters& parameters)
 
 		return true;
 	});
+
+	receiveEvent<DebuggerEvents::Refresh>([this](const DebuggerEvents::Refresh& event) {
+		if (!cpu().isAlive())
+			return true;
+
+		for (int i = 0; i < m_model->rowCount(); i++)
+		{
+			QModelIndex locked_index = m_model->index(i, SavedAddressesModel::LOCKED);
+			bool locked = m_model->data(locked_index, Qt::UserRole).toBool();
+			if (!locked)
+				continue;
+
+			QModelIndex address_index = m_model->index(i, SavedAddressesModel::ADDRESS);
+			u32 address = m_model->data(address_index, Qt::UserRole).toUInt();
+
+			QModelIndex size_index = m_model->index(i, SavedAddressesModel::SIZE);
+			u32 size = m_model->data(size_index, Qt::UserRole).toUInt();
+
+			QModelIndex value_index = m_model->index(i, SavedAddressesModel::LOCKED_VALUE);
+			u64 locked_value = m_model->data(value_index, Qt::UserRole).toULongLong();
+
+			u64 current_value = 0;
+			switch (size)
+			{
+				case 1:
+					current_value = cpu().Read8(address);
+					break;
+				case 2:
+					current_value = cpu().Read16(address);
+					break;
+				case 4:
+					current_value = cpu().Read32(address);
+					break;
+				case 8:
+					current_value = cpu().Read64(address);
+					break;
+			}
+
+			if (current_value != locked_value)
+			{
+				switch (size)
+				{
+					case 1:
+						cpu().Write8(address, static_cast<u8>(locked_value));
+						break;
+					case 2:
+						cpu().Write16(address, static_cast<u16>(locked_value));
+						break;
+					case 4:
+						cpu().Write32(address, static_cast<u32>(locked_value));
+						break;
+					case 8:
+						cpu().Write64(address, locked_value);
+						break;
+				}
+			}
+		}
+
+		return true;
+	});
 }
 
 void SavedAddressesView::openContextMenu(QPoint pos)

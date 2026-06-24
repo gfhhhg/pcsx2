@@ -32,7 +32,11 @@ QVariant SavedAddressesModel::data(const QModelIndex& index, int role) const
 	const SavedAddress& entry = m_savedAddresses[row];
 
 	if (role == Qt::CheckStateRole)
+	{
+		if (index.column() == HeaderColumns::LOCKED)
+			return entry.locked ? Qt::Checked : Qt::Unchecked;
 		return QVariant();
+	}
 
 	if (role == Qt::DisplayRole || role == Qt::EditRole)
 	{
@@ -44,6 +48,12 @@ QVariant SavedAddressesModel::data(const QModelIndex& index, int role) const
 				return entry.label;
 			case HeaderColumns::DESCRIPTION:
 				return entry.description;
+			case HeaderColumns::SIZE:
+				return QString::number(entry.size);
+			case HeaderColumns::LOCKED_VALUE:
+				return QString::number(entry.locked_value, 16).toUpper();
+			case HeaderColumns::LOCKED:
+				return entry.locked ? QString("1") : QString("0");
 		}
 	}
 	if (role == Qt::UserRole)
@@ -56,6 +66,12 @@ QVariant SavedAddressesModel::data(const QModelIndex& index, int role) const
 				return entry.label;
 			case HeaderColumns::DESCRIPTION:
 				return entry.description;
+			case HeaderColumns::SIZE:
+				return entry.size;
+			case HeaderColumns::LOCKED_VALUE:
+				return entry.locked_value;
+			case HeaderColumns::LOCKED:
+				return entry.locked;
 		}
 	}
 
@@ -71,7 +87,15 @@ bool SavedAddressesModel::setData(const QModelIndex& index, const QVariant& valu
 	SavedAddress& entry = m_savedAddresses[row];
 
 	if (role == Qt::CheckStateRole)
+	{
+		if (index.column() == HeaderColumns::LOCKED)
+		{
+			entry.locked = (value.toInt() == Qt::Checked);
+			emit dataChanged(index, index, QList<int>(role));
+			return true;
+		}
 		return false;
+	}
 
 	if (role == Qt::EditRole)
 	{
@@ -91,6 +115,26 @@ bool SavedAddressesModel::setData(const QModelIndex& index, const QVariant& valu
 		if (index.column() == HeaderColumns::LABEL)
 			entry.label = value.toString();
 
+		if (index.column() == HeaderColumns::SIZE)
+		{
+			bool ok = false;
+			const u32 size = value.toString().toUInt(&ok);
+			if (ok && (size == 1 || size == 2 || size == 4 || size == 8))
+				entry.size = size;
+			else
+				return false;
+		}
+
+		if (index.column() == HeaderColumns::LOCKED_VALUE)
+		{
+			bool ok = false;
+			const u64 locked_value = value.toString().toULongLong(&ok, 16);
+			if (ok)
+				entry.locked_value = locked_value;
+			else
+				return false;
+		}
+
 		emit dataChanged(index, index, QList<int>(role));
 		return true;
 	}
@@ -107,6 +151,15 @@ bool SavedAddressesModel::setData(const QModelIndex& index, const QVariant& valu
 
 		if (index.column() == HeaderColumns::LABEL)
 			entry.label = value.toString();
+
+		if (index.column() == HeaderColumns::SIZE)
+			entry.size = value.toUInt();
+
+		if (index.column() == HeaderColumns::LOCKED_VALUE)
+			entry.locked_value = value.toULongLong();
+
+		if (index.column() == HeaderColumns::LOCKED)
+			entry.locked = value.toBool();
 
 		emit dataChanged(index, index, QList<int>(role));
 		return true;
@@ -130,6 +183,12 @@ QVariant SavedAddressesModel::headerData(int section, Qt::Orientation orientatio
 				return tr("LABEL");
 			case SavedAddressesModel::DESCRIPTION:
 				return tr("DESCRIPTION");
+			case SavedAddressesModel::SIZE:
+				return tr("SIZE");
+			case SavedAddressesModel::LOCKED_VALUE:
+				return tr("LOCKED VALUE");
+			case SavedAddressesModel::LOCKED:
+				return tr("LOCKED");
 			default:
 				return QVariant();
 		}
@@ -144,6 +203,12 @@ QVariant SavedAddressesModel::headerData(int section, Qt::Orientation orientatio
 				return "LABEL";
 			case SavedAddressesModel::DESCRIPTION:
 				return "DESCRIPTION";
+			case SavedAddressesModel::SIZE:
+				return "SIZE";
+			case SavedAddressesModel::LOCKED_VALUE:
+				return "LOCKED VALUE";
+			case SavedAddressesModel::LOCKED:
+				return "LOCKED";
 			default:
 				return QVariant();
 		}
@@ -153,12 +218,14 @@ QVariant SavedAddressesModel::headerData(int section, Qt::Orientation orientatio
 
 Qt::ItemFlags SavedAddressesModel::flags(const QModelIndex& index) const
 {
+	if (index.column() == HeaderColumns::LOCKED)
+		return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable;
 	return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable;
 }
 
 void SavedAddressesModel::addRow()
 {
-	const SavedAddress defaultNewAddress = {0, tr("Name"), tr("Description")};
+	const SavedAddress defaultNewAddress = {0, tr("Name"), tr("Description"), false, 0, 4};
 	addRow(defaultNewAddress);
 }
 
@@ -193,7 +260,7 @@ int SavedAddressesModel::columnCount(const QModelIndex&) const
 
 void SavedAddressesModel::loadSavedAddressFromFieldList(QStringList fields)
 {
-	if (fields.size() != SavedAddressesModel::HeaderColumns::COLUMN_COUNT)
+	if (fields.size() != SavedAddressesModel::HeaderColumns::COLUMN_COUNT && fields.size() != 3)
 	{
 		Console.WriteLn("Debugger Saved Addresses Model: Invalid number of columns, skipping");
 		return;
@@ -209,7 +276,22 @@ void SavedAddressesModel::loadSavedAddressFromFieldList(QStringList fields)
 
 	const QString label = fields[SavedAddressesModel::HeaderColumns::LABEL];
 	const QString description = fields[SavedAddressesModel::HeaderColumns::DESCRIPTION];
-	const SavedAddressesModel::SavedAddress importedAddress = {address, label, description};
+
+	SavedAddressesModel::SavedAddress importedAddress = {address, label, description, false, 0, 4};
+
+	if (fields.size() == SavedAddressesModel::HeaderColumns::COLUMN_COUNT)
+	{
+		u32 size = fields[SavedAddressesModel::HeaderColumns::SIZE].toUInt(&ok);
+		if (ok && (size == 1 || size == 2 || size == 4 || size == 8))
+			importedAddress.size = size;
+
+		u64 locked_value = fields[SavedAddressesModel::HeaderColumns::LOCKED_VALUE].toULongLong(&ok, 16);
+		if (ok)
+			importedAddress.locked_value = locked_value;
+
+		importedAddress.locked = (fields[SavedAddressesModel::HeaderColumns::LOCKED].toInt() == 1);
+	}
+
 	addRow(importedAddress);
 }
 

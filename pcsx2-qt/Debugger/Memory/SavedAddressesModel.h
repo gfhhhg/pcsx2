@@ -18,6 +18,9 @@ public:
 		u32 address;
 		QString label;
 		QString description;
+		bool locked = false;
+		u64 locked_value = 0;
+		u32 size = 4;
 	};
 
 	enum HeaderColumns : int
@@ -25,6 +28,9 @@ public:
 		ADDRESS = 0,
 		LABEL,
 		DESCRIPTION,
+		SIZE,
+		LOCKED_VALUE,
+		LOCKED,
 		COLUMN_COUNT
 	};
 
@@ -32,6 +38,9 @@ public:
 		QHeaderView::ResizeMode::ResizeToContents,
 		QHeaderView::ResizeMode::ResizeToContents,
 		QHeaderView::ResizeMode::Stretch,
+		QHeaderView::ResizeMode::ResizeToContents,
+		QHeaderView::ResizeMode::ResizeToContents,
+		QHeaderView::ResizeMode::ResizeToContents,
 	};
 
 	static SavedAddressesModel* getInstance(DebugInterface& cpu);
